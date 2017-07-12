@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
+    <title>Braid Demo: envrionment cube map</title>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Braid Demo: <span class=subtitle>Envrionment cube mapping</a></h1>
+
+    <canvas id="webglCanvas" style="border: none; background-color: black;" width="800" height="600"></canvas>
+
+<script src="./jquery-3.1.1.min.js"></script>
+<script src="./preloadjs-0.6.2.min.js"></script>
+<script src="./gl-matrix-min.js"></script>
+<script src="./webgl-obj-loader.js"></script>
+
+
+<script id="skyBoxVertexShader" type="x-shader/x-vertex">
+    attribute vec3 vert_position;
+    uniform mat4 projection;
+    uniform mat4 modelView;
+
+    varying vec3 frag_pos;
+
+    void main() {
+        gl_Position = projection * modelView * vec4(vert_position, 1.0);
+        frag_pos = vert_position;
+    }
+</script>
+
+
+<script id="skyBoxFragmentShader" type="x-shader/x-fragment">
+    precision highp float;
+
+    varying vec3 frag_pos;
+
+    uniform samplerCube envSampler;
+    uniform mat4 modelViewInverse;
+
+    void main() {
+        vec3 eye = (modelViewInverse * vec4(0.0, 0.0, 0.0, 1.0)).xyz;        
+        gl_FragColor = textureCube(envSampler, frag_pos - eye);
+    }
+</script>
+
+
+<script id="teapotVertexShader" type="x-shader/x-vertex">
+    attribute vec3 vert_position;
+    attribute vec3 vert_normal;
+    uniform mat4 projection;
+    uniform mat4 modelView;
+    uniform mat4 modelViewInverse;    
+    uniform mat4 transformation;
+    uniform mat4 transNormal;
+
+    varying vec3 frag_normal;
+    varying vec3 frag_pos;
+
+    void main() {
+        gl_Position = projection * modelView * transformation * vec4(vert_position / 5.0, 1.0);
+        frag_normal = (transNormal * vec4(vert_normal, 0.0)).xyz;
+        frag_pos = (transformation * vec4(vert_position / 5.0, 1.0)).xyz;
+    }
+</script>
+
+<script id="teapotFragmentShader" type="x-shader/x-fragment">
+    precision highp float;
+
+    uniform mat4 modelView;
+    uniform mat4 modelViewInverse;    
+    uniform samplerCube envSampler;
+
+    varying vec3 frag_normal;
+    varying vec3 frag_pos;
+
+    void main() {
+        vec3 normal = normalize(frag_normal);
+        vec3 eye = (modelViewInverse * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+        vec3 rayIn = normalize(frag_pos - eye);
+        vec3 rayOut = normalize(reflect(rayIn, normal));
+        gl_FragColor = textureCube(envSampler, rayOut);
+    }
+</script>
+
+<script>
+    function initializeWebGL(canvas) {
+        // Getting WebGL context the right way
+        var gl = null;
+        try {
+            gl = canvas[0].getContext("webgl");
+        } catch (error) {
+            // NO-OP
+        }
+        if (!gl) {
+            alert("Could not get WebGL context!");
+            throw new Error("Could not get WebGL context!");
+        }
+        return gl;
+    }
+
+    function createShader(gl, shaderScriptId) {
+        var shaderScript = $("#" + shaderScriptId);
+        var shaderSource = shaderScript[0].text;
+        var shaderType = null;
+        if (shaderScript[0].type == "x-shader/x-vertex") {
+            shaderType = gl.VERTEX_SHADER;
+        } else if (shaderScript[0].type == "x-shader/x-fragment") {
+            shaderType = gl.FRAGMENT_SHADER;
+        } else {
+            throw new Error("Invalid shader type: " + shaderScript[0].type)
+        }
+        var shader = gl.createShader(shaderType);
+        gl.shaderSource(shader, shaderSource);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            var infoLog = gl.getShaderInfoLog(shader);
+            gl.deleteShader(shader);
+            throw new Error("An error occurred compiling the shader: " + infoLog);
+        } else {
+            return shader;
+        }
+    }
+
+    function createGlslProgram(gl, vertexShaderId, fragmentShaderId) {
+        var program = gl.createProgram();
+        gl.attachShader(program, createShader(gl, vertexShaderId));
+        gl.attachShader(program, createShader(gl, fragmentShaderId));
+        gl.linkProgram(program);
+        gl.validateProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            var infoLog = gl.getProgramInfoLog(program);
+            gl.deleteProgram(program);
+            throw new Error("An error occurred linking the program: " + infoLog);
+        } else {
+            return program;
+        }
+    }
+
+    function createShape(gl, vertexData, indexData) {
+        var shape = {};
+
+        var vertexArray = new Float32Array(vertexData);
+        var vertexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, vertexArray, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+        var indexArray = new Uint16Array(indexData);
+        var indexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indexArray, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+        shape.vertexBuffer = vertexBuffer;
+        shape.indexBuffer = indexBuffer;
+        shape.size = indexData.length;
+
+        return shape;
+    }
+
+    function drawShape(gl, program, shape, size) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, shape.vertexBuffer);
+        var positionLocation = gl.getAttribLocation(program, "vert_position");
+        gl.enableVertexAttribArray(positionLocation);
+        gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+        if (shape.normalBuffer != undefined) {
+            gl.bindBuffer(gl.ARRAY_BUFFER, shape.normalBuffer);
+            var normalLocation = gl.getAttribLocation(program, "vert_normal");
+            gl.enableVertexAttribArray(normalLocation);
+            gl.vertexAttribPointer(normalLocation, 3, gl.FLOAT, false, 3*4, 0);
+            gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        }
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, shape.indexBuffer);
+        gl.drawElements(gl.TRIANGLES, size, gl.UNSIGNED_SHORT, 0);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+        gl.useProgram(null);
+    }
+
+    function getProjectionMatrix() {
+        var projMat = mat4.create();
+        mat4.perspective(projMat, 55 / 180 * 3.14, 800.0 / 600.0, 0.1, 2000.0);
+        return projMat;
+    }
+
+    function getMVMatrix(initTime) {
+        // rotation is in radian
+        var rotationX = 0/180*3.14;
+        var rotationY = 0;
+        if (initTime != undefined) {
+            rotationY = (performance.now() - initTime)/100/180*3.14;  
+        }        
+        var rotationZ = 0/180*3.14;
+        var translateX = 0;
+        var translateY = 1.5;
+        var translateZ = 7;
+
+        var T = mat4.create();
+        var translation = vec3.fromValues(translateX, translateY, translateZ);
+        mat4.fromTranslation(T, translation);
+
+        var xAxis = vec3.fromValues(1, 0, 0);
+        var yAxis = vec3.fromValues(0, 1, 0);
+        var zAxis = vec3.fromValues(0, 0, 1);
+        var R = mat4.create();
+        mat4.rotate(R, R, rotationX, xAxis);
+        mat4.rotate(R, R, rotationY, yAxis);
+        mat4.rotate(R, R, rotationZ, zAxis);
+
+        var M = mat4.create();
+        mat4.mul(M, R, T);
+        mat4.invert(M, M);
+        return M;
+    }
+
+    function getTransformationMatrix() {
+        var rotationX = 90/180*3.14;
+        var rotationY = 0/180*3.14;  
+        var rotationZ = 0/180*3.14;
+        var translateX = 0;
+        var translateY = 0;
+        var translateZ = 0;
+
+        var T = mat4.create();
+        var translation = vec3.fromValues(translateX, translateY, translateZ);
+        mat4.fromTranslation(T, translation);
+
+        var xAxis = vec3.fromValues(1, 0, 0);
+        var yAxis = vec3.fromValues(0, 1, 0);
+        var zAxis = vec3.fromValues(0, 0, 1);
+        var R = mat4.create();
+        mat4.rotate(R, R, rotationX, xAxis);
+        mat4.rotate(R, R, rotationY, yAxis);
+        mat4.rotate(R, R, rotationZ, zAxis);
+
+        var M = mat4.create();
+        mat4.mul(M, T, R);
+        mat4.invert(M, M);
+        return M;
+    }
+
+    function startWebGL(meshes) {
+        // Step 1: Create a LoadQueue object.
+        var queue = new createjs.LoadQueue();
+        // Step 2: Register the callback function.
+        queue.on("complete", function () { runWebGL(queue, meshes) }, this);
+        // Step 3: List the files you want to load, with their correponding ID.
+        queue.loadManifest([
+            {
+                id: "cornell",
+                src: "cornell-logo.jpg"
+            },
+            {
+                id: "posx",
+                src: "posx.jpg"
+            },
+            {
+                id: "negx",
+                src: "negx.jpg"
+            },
+            {
+                id: "posy",
+                src: "posy.jpg"
+            },
+            {
+                id: "negy",
+                src: "negy.jpg"
+            },
+            {
+                id: "posz",
+                src: "posz.jpg"
+            },
+            {
+                id: "negz",
+                src: "negz.jpg"
+            }
+        ]);
+    }
+
+    function createTexture(gl, image) {
+        var texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        return texture;
+    }
+
+    function createCubeTexture(gl, faces) {
+        var texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_CUBE_MAP, texture);
+        gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        for (var i = 0; i < faces.length; i++) {
+            gl.bindTexture(gl.TEXTURE_CUBE_MAP, texture);
+            gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);         
+            gl.texImage2D(faces[i][1], 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, faces[i][0]);
+        }
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        return texture;
+    }
+
+    function runWebGL(queue, meshes) {
+        meshesVar = meshes;
+        /** @type {WebGLRenderingContext} */
+        var gl = initializeWebGL($("#webglCanvas"));
+
+        var program = createGlslProgram(gl, "skyBoxVertexShader", "skyBoxFragmentShader");
+        var teapotProgram = createGlslProgram(gl, "teapotVertexShader", "teapotFragmentShader");
+        ["envSampler"].forEach(function (name) {
+            program[name] = gl.getUniformLocation(program, name);
+            teapotProgram[name] = gl.getUniformLocation(teapotProgram, name);
+        });
+
+        var faces = [[queue.getResult("posx", false), gl.TEXTURE_CUBE_MAP_POSITIVE_X],
+        [queue.getResult("negx", false), gl.TEXTURE_CUBE_MAP_NEGATIVE_X],
+        [queue.getResult("posy", false), gl.TEXTURE_CUBE_MAP_POSITIVE_Y],
+        [queue.getResult("negy", false), gl.TEXTURE_CUBE_MAP_NEGATIVE_Y],
+        [queue.getResult("posz", false), gl.TEXTURE_CUBE_MAP_POSITIVE_Z],
+        [queue.getResult("negz", false), gl.TEXTURE_CUBE_MAP_NEGATIVE_Z]];
+        var cubeTexture = createCubeTexture(gl, faces, );
+        // var woodTexture = createTexture(gl, queue.getResult("wood", false));
+        // var checkerTexture = createTexture(gl, queue.getResult("checker", false));
+
+        var vertexData = [
+            100, 100, -100,
+            -100, 100, -100,
+            100, -100, -100,
+            -100, -100, -100,
+            100, 100, 100,
+            -100, 100, 100,
+            100, -100, 100,
+            -100, -100, 100,
+        ];
+        var indexData = [
+            0, 1, 2,
+            1, 3, 2,
+            4, 5, 1,
+            4, 1, 0,
+            2, 3, 6,
+            3, 7, 6,
+            1, 5, 3,
+            5, 7, 3,
+            4, 0, 2,
+            6, 4, 2,
+            5, 4, 6,
+            5, 6, 7
+        ];
+        var skyBox = createShape(gl, vertexData, indexData);
+        OBJ.initMeshBuffers(gl, meshes.teapot);
+        // OBJ.initMeshBuffers(gl, app.meshes.suzanne);
+        gl.depthFunc(gl.LESS);
+        gl.enable(gl.DEPTH_TEST);
+        var initTime = performance.now();
+
+        function updateWebGL() {
+            gl.clearColor(0.0, 0.0, 0.0, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            gl.useProgram(program);
+
+            if (program.envSampler != null) {
+                gl.activeTexture(gl.TEXTURE0);
+                gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubeTexture);
+                gl.uniform1i(program.texture0, 0);
+            }
+
+            gl.uniformMatrix4fv(gl.getUniformLocation(program, "projection"), false, getProjectionMatrix());
+            var mv = getMVMatrix(initTime);
+            gl.uniformMatrix4fv(gl.getUniformLocation(program, "modelView"), false, mv);
+            var mvinv = mat4.create();
+            mat4.invert(mvinv, mv);
+            gl.uniformMatrix4fv(gl.getUniformLocation(teapotProgram, "modelViewInverse"), false, mvinv);
+
+            drawShape(gl, program, skyBox, skyBox.size);
+            gl.useProgram(null);
+
+            gl.useProgram(teapotProgram);
+
+            if (teapotProgram.envSampler != null) {
+                gl.activeTexture(gl.TEXTURE1);
+                gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubeTexture);
+                gl.uniform1i(teapotProgram.texture1, 0);
+            }
+
+            gl.uniformMatrix4fv(gl.getUniformLocation(teapotProgram, "projection"), false, getProjectionMatrix());
+            gl.uniformMatrix4fv(gl.getUniformLocation(teapotProgram, "modelView"), false, mv);
+            var trans = getTransformationMatrix();
+            gl.uniformMatrix4fv(gl.getUniformLocation(teapotProgram, "transformation"), false, trans);
+            var normal = mat4.create();
+            mat4.transpose(normal, trans);
+            mat4.invert(normal, normal);
+            gl.uniformMatrix4fv(gl.getUniformLocation(teapotProgram, "transNormal"), false, normal);
+            gl.uniformMatrix4fv(gl.getUniformLocation(teapotProgram, "modelViewInverse"), false, mvinv);
+            drawShape(gl, teapotProgram, meshes.teapot, meshes.teapot.indexBuffer.numItems);
+            gl.useProgram(null);
+
+            // Reschedule the next frame.
+            window.requestAnimationFrame(updateWebGL);
+        }
+
+        window.requestAnimationFrame(updateWebGL);
+    }
+    var meshesVar;
+    window.onload = function () {
+        OBJ.downloadMeshes({
+            'teapot': 'teapot.obj', // located in the models folder on the server
+        }, startWebGL);
+    }
+</script>
+</body>
+</html>
