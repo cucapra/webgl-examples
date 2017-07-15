@@ -45,7 +45,7 @@
 
     void main() {
         vec3 eye = (modelViewInverse * vec4(0.0, 0.0, 0.0, 1.0)).xyz;        
-        gl_FragColor = textureCube(envSampler, frag_pos - eye);
+        gl_FragColor = textureCube(envSampler, normalize(frag_pos - eye) * vec3(-1.0, 1.0, 1.0));
     }
 </script>
 
@@ -84,7 +84,7 @@
         vec3 eye = (modelViewInverse * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
         vec3 rayIn = normalize(frag_pos - eye);
         vec3 rayOut = normalize(reflect(rayIn, normal));
-        gl_FragColor = textureCube(envSampler, rayOut);
+        gl_FragColor = textureCube(envSampler, rayOut * vec3(-1.0, 1.0, 1.0));
     }
 </script>
 
@@ -308,7 +308,7 @@
         gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.NEAREST_MIPMAP_LINEAR);
         gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
         return texture;
     }
 
@@ -374,7 +374,7 @@
             if (program.envSampler != null) {
                 gl.activeTexture(gl.TEXTURE0);
                 gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubeTexture);
-                gl.uniform1i(program.texture0, 0);
+                gl.uniform1i(program.envSampler, 0);
             }
 
             gl.uniformMatrix4fv(gl.getUniformLocation(program, "projection"), false, getProjectionMatrix());
@@ -392,7 +392,7 @@
             if (teapotProgram.envSampler != null) {
                 gl.activeTexture(gl.TEXTURE1);
                 gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubeTexture);
-                gl.uniform1i(teapotProgram.texture1, 0);
+                gl.uniform1i(teapotProgram.envSampler, 1);
             }
 
             gl.uniformMatrix4fv(gl.getUniformLocation(teapotProgram, "projection"), false, getProjectionMatrix());
