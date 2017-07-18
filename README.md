@@ -5,4 +5,4 @@ This repositiory contains [Braid](https://github.com/cucapra/braid) webgl exampl
 It includes
 
 - environment mapping
-
+- shadow mapping

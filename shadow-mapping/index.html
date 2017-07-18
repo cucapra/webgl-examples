@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
+    <title>Braid Demo: shadow mapping</title>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Braid Demo: <span class=subtitle>shadow mapping</a></h1>
+
+    <canvas id="webglCanvas" style="border: none; background-color: black;" width="800" height="600"></canvas>
+
+<script src="./jquery-3.1.1.min.js"></script>
+<script src="./preloadjs-0.6.2.min.js"></script>
+<script src="./gl-matrix-min.js"></script>
+<script src="./webgl-obj-loader.js"></script>
+
+
+<script id="vertexShader" type="x-shader/x-vertex">
+    attribute vec3 vert_normal;
+    attribute vec3 vert_position;
+
+    uniform mat4 projection;
+    uniform mat4 modelView;
+    uniform mat4 normalMatrix;
+
+    uniform vec3 light;
+    
+    varying vec3 vNormal;
+    varying vec4 vPosition;
+
+    void main() {
+        gl_Position = projection * modelView * vec4(vert_position, 1.0);
+        vPosition = modelView * vec4(vert_position, 1.0);
+        vNormal = normalize((normalMatrix * vec4(vert_normal, 0.0)).xyz);
+    }
+</script>
+
+
+<script id="fragmentShader" type="x-shader/x-fragment">
+    precision highp float;
+    
+    uniform vec3 light;
+    uniform float exposure;
+    uniform float shinniess;
+
+    uniform mat4 modelView;
+    
+    
+    varying vec3 vNormal;
+    varying vec4 vPosition;
+
+    void main() {
+
+        vec3 color = vec3(0.5, 0.0, 0.0);
+        vec3 light_pos = (modelView * vec4(light, 1.0)).xyz;
+
+        vec3 N = normalize(vNormal);
+        vec3 V = normalize(-vPosition.xyz);
+        
+        vec4 finalColor = vec4(0.0, 0.0, 0.0, 0.0);
+
+        float r = length(light_pos - vPosition.xyz);
+        
+        
+        vec3 L = normalize(light_pos - vPosition.xyz);
+        
+        vec3 H = normalize(L + V);        
+
+        float lambertian = max(0.0, dot(N, L));    
+        float specular = 0.0;
+
+        if(lambertian > 0.0) {
+            vec3 R = reflect(-L, N);      // Reflected light vector
+
+            // Compute the specular term
+            float specAngle = max(dot(R, V), 0.0);
+            specular = pow(specAngle, shinniess);
+        }
+
+          gl_FragColor = vec4((1.0 * vec3(0.2, 0.0, 0.0) +
+                      20.0 * lambertian * color / (r*r) +
+                      10.0 * specular * vec3(1.0, 1.0, 1.0)/ (r*r)) * exposure, 1.0);
+    }
+</script>
+
+<script id="floorVertexShader" type="x-shader/x-vertex">
+    attribute vec3 vert_position;
+
+    uniform mat4 projection;
+    uniform mat4 modelView;
+    uniform mat4 normalMatrix;
+
+    uniform vec3 light;
+    
+    varying vec3 vNormal;
+    varying vec4 vPosition;
+    
+
+    void main() {
+        gl_Position = projection * modelView * vec4(vert_position, 1.0);
+        vPosition = modelView * vec4(vert_position, 1.0);
+        vNormal = normalize((normalMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+    }
+</script>
+
+
+<script id="floorFragmentShader" type="x-shader/x-fragment">
+    precision highp float;
+    
+    uniform vec3 light;
+    uniform float exposure;
+    uniform float shinniess;
+
+    uniform mat4 modelView;
+    
+    
+    varying vec3 vNormal;
+    varying vec4 vPosition;
+
+    void main() {
+
+        vec3 color = vec3(1.0, 1.0, 1.0);
+        vec3 light_pos = (modelView * vec4(light, 1.0)).xyz;
+
+        vec3 N = normalize(vNormal);
+        vec3 V = normalize(-vPosition.xyz);
+        
+        vec4 finalColor = vec4(0.0, 0.0, 0.0, 0.0);
+
+        float r = length(light_pos - vPosition.xyz);
+        
+        
+        vec3 L = normalize(light_pos - vPosition.xyz);
+        
+        vec3 H = normalize(L + V);        
+
+        float lambertian = max(0.0, dot(N, L));    
+        float specular = 0.0;
+
+        if(lambertian > 0.0) {
+            vec3 R = reflect(-L, N);      // Reflected light vector
+
+            // Compute the specular term
+            float specAngle = max(dot(R, V), 0.0);
+            specular = pow(specAngle, shinniess);
+        }
+
+          gl_FragColor = vec4((1.0 * vec3(0.1, 0.1, 0.1) +
+                      10.0 * lambertian * color / (r*r) +
+                      10.0 * specular * vec3(1.0, 1.0, 1.0)/ (r*r)) * exposure, 1.0);
+    }
+</script>
+
+<script>
+    function initializeWebGL(canvas) {
+        // Getting WebGL context the right way
+        var gl = null;
+        try {
+            gl = canvas[0].getContext("webgl");
+        } catch (error) {
+            // NO-OP
+        }
+        if (!gl) {
+            alert("Could not get WebGL context!");
+            throw new Error("Could not get WebGL context!");
+        }
+        return gl;
+    }
+
+    function createShader(gl, shaderScriptId) {
+        var shaderScript = $("#" + shaderScriptId);
+        var shaderSource = shaderScript[0].text;
+        var shaderType = null;
+        if (shaderScript[0].type == "x-shader/x-vertex") {
+            shaderType = gl.VERTEX_SHADER;
+        } else if (shaderScript[0].type == "x-shader/x-fragment") {
+            shaderType = gl.FRAGMENT_SHADER;
+        } else {
+            throw new Error("Invalid shader type: " + shaderScript[0].type)
+        }
+        var shader = gl.createShader(shaderType);
+        gl.shaderSource(shader, shaderSource);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            var infoLog = gl.getShaderInfoLog(shader);
+            gl.deleteShader(shader);
+            throw new Error("An error occurred compiling the shader: " + infoLog);
+        } else {
+            return shader;
+        }
+    }
+
+    function createGlslProgram(gl, vertexShaderId, fragmentShaderId) {
+        var program = gl.createProgram();
+        gl.attachShader(program, createShader(gl, vertexShaderId));
+        gl.attachShader(program, createShader(gl, fragmentShaderId));
+        gl.linkProgram(program);
+        gl.validateProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            var infoLog = gl.getProgramInfoLog(program);
+            gl.deleteProgram(program);
+            throw new Error("An error occurred linking the program: " + infoLog);
+        } else {
+            return program;
+        }
+    }
+
+    function createShape(gl, vertexData, indexData) {
+        var shape = {};
+
+        var vertexArray = new Float32Array(vertexData);
+        var vertexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, vertexArray, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        
+        var indexArray = new Uint16Array(indexData);
+        var indexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indexArray, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+        shape.vertexBuffer = vertexBuffer;
+        shape.vertexBuffer.itemSize = 3;
+        shape.indexBuffer = indexBuffer;
+        shape.size = indexData.length;
+
+        return shape;
+    }
+
+    function drawShape(gl, program, shape, size) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, shape.vertexBuffer);
+        var positionLocation = gl.getAttribLocation(program, "vert_position");
+        gl.enableVertexAttribArray(positionLocation);
+        gl.vertexAttribPointer(positionLocation, shape.vertexBuffer.itemSize, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+        if (shape.normalBuffer != undefined) {
+            gl.bindBuffer(gl.ARRAY_BUFFER, shape.normalBuffer);
+            var normalLocation = gl.getAttribLocation(program, "vert_normal");
+            gl.enableVertexAttribArray(normalLocation);
+            gl.vertexAttribPointer(normalLocation, shape.normalBuffer.itemSize, gl.FLOAT, false, 0, 0);
+            gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        }
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, shape.indexBuffer);
+        gl.drawElements(gl.TRIANGLES, size, gl.UNSIGNED_SHORT, 0);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+        gl.useProgram(null);
+    }
+
+    function getProjectionMatrix() {
+        var projMat = mat4.create();
+        mat4.perspective(projMat, 55 / 180 * 3.14, 800.0 / 600.0, 0.1, 2000.0);
+        return projMat;
+    }
+
+    function getMVMatrix(initTime) {
+        // rotation is in radian
+        var rotationX = -10.0/180*3.14;
+        var rotationY = 0.0/180*3.14;
+        if (initTime != undefined) {
+            rotationY = (performance.now() - initTime)/100/180*3.14;  
+        }        
+        var rotationZ = 0.0/180*3.14;
+        var translateX = 0;
+        var translateY = 5;
+        var translateZ = 20;
+
+        var T = mat4.create();
+        var translation = vec3.fromValues(translateX, translateY, translateZ);
+        mat4.fromTranslation(T, translation);
+
+        var xAxis = vec3.fromValues(1, 0, 0);
+        var yAxis = vec3.fromValues(0, 1, 0);
+        var zAxis = vec3.fromValues(0, 0, 1);
+        var R = mat4.create();
+        mat4.rotate(R, R, rotationY, yAxis);
+        mat4.rotate(R, R, rotationX, xAxis);
+        mat4.rotate(R, R, rotationZ, zAxis);
+
+        var M = mat4.create();
+        mat4.mul(M, R, T);
+        mat4.invert(M, M);
+        return M;
+    }
+
+    function getTransformationMatrix() {
+        var rotationX = 90/180*3.14;
+        var rotationY = 0/180*3.14;  
+        var rotationZ = 0/180*3.14;
+        var translateX = 0;
+        var translateY = 0;
+        var translateZ = 0;
+
+        var T = mat4.create();
+        var translation = vec3.fromValues(translateX, translateY, translateZ);
+        mat4.fromTranslation(T, translation);
+
+        var xAxis = vec3.fromValues(1, 0, 0);
+        var yAxis = vec3.fromValues(0, 1, 0);
+        var zAxis = vec3.fromValues(0, 0, 1);
+        var R = mat4.create();
+        mat4.rotate(R, R, rotationX, xAxis);
+        mat4.rotate(R, R, rotationY, yAxis);
+        mat4.rotate(R, R, rotationZ, zAxis);
+
+        var M = mat4.create();
+        mat4.mul(M, T, R);
+        mat4.invert(M, M);
+        return M;
+    }
+
+    function startWebGL(meshes) {
+       runWebGL(meshes);
+    }
+
+    function createTexture(gl, image) {
+        var texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        return texture;
+    }
+
+    function runWebGL(meshes) {
+        meshesVar = meshes;
+        /** @type {WebGLRenderingContext} */
+        var gl = initializeWebGL($("#webglCanvas"));
+
+        var program = createGlslProgram(gl, "vertexShader", "fragmentShader");
+        var floorProgram = createGlslProgram(gl, "floorVertexShader", "floorFragmentShader");
+
+        var floorVertexData = [
+            // floor
+            100, 0, 100,
+            100, 0, -100,
+            -100, 0, 100,
+            -100, 0, -100
+        ];
+
+        var floorIndexData = [
+            0, 1, 3,
+            3, 2, 0
+        ];
+
+        var lightPos = vec3.fromValues(0.0, 10.0, 0.0);
+        
+        OBJ.initMeshBuffers(gl, meshes.box);
+        var box = meshes.box;
+        var floor = createShape(gl, floorVertexData, floorIndexData);
+
+
+        gl.depthFunc(gl.LESS);
+        gl.enable(gl.DEPTH_TEST);
+        var initTime = performance.now();
+        var exposure = 2;
+        var shinniess = 0.5;
+
+        function updateWebGL() {
+            gl.clearColor(0.5, 0.6, 1.0, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            var proj = getProjectionMatrix()
+            var mv = getMVMatrix(initTime);
+            var normalMat = mat4.create();
+            mat4.transpose(normalMat, mv);
+            mat4.invert(normalMat, normalMat);
+
+            gl.useProgram(program);
+            gl.uniformMatrix4fv(gl.getUniformLocation(program, "projection"), false, proj);
+            gl.uniformMatrix4fv(gl.getUniformLocation(program, "modelView"), false, mv);
+            gl.uniformMatrix4fv(gl.getUniformLocation(program, "normalMatrix"), false, normalMat);
+            
+            gl.uniform3fv(gl.getUniformLocation(program, "light"), lightPos);
+            gl.uniform1f(gl.getUniformLocation(program, "exposure"), exposure);
+            gl.uniform1f(gl.getUniformLocation(program, "shinniess"), shinniess);
+            
+            drawShape(gl, program, box, box.indexBuffer.numItems);
+            gl.useProgram(null);
+
+            gl.useProgram(floorProgram);
+            gl.uniformMatrix4fv(gl.getUniformLocation(floorProgram, "projection"), false, proj);
+            gl.uniformMatrix4fv(gl.getUniformLocation(floorProgram, "modelView"), false, mv);
+            gl.uniformMatrix4fv(gl.getUniformLocation(floorProgram, "normalMatrix"), false, normalMat);
+            
+            gl.uniform3fv(gl.getUniformLocation(floorProgram, "light"), lightPos);
+            gl.uniform1f(gl.getUniformLocation(floorProgram, "exposure"), exposure);
+            gl.uniform1f(gl.getUniformLocation(floorProgram, "shinniess"), shinniess);
+            
+            drawShape(gl, floorProgram, floor, floor.size);
+            gl.useProgram(null);
+            
+
+            // Reschedule the next frame.
+            window.requestAnimationFrame(updateWebGL);
+        }
+
+        window.requestAnimationFrame(updateWebGL);
+    }
+    var meshVar;
+    window.onload = function () {
+        OBJ.downloadMeshes({
+            'box': 'box.obj', // located in the models folder on the server
+        }, startWebGL);
+    }
+</script>
+</body>
+</html>
