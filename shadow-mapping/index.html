@@ -58,34 +58,36 @@
     void main() {
 
         vec3 color = vec3(0.5, 0.0, 0.0);
-        vec3 light_pos = (modelView * vec4(light, 1.0)).xyz;
 
         vec3 N = normalize(vNormal);
         vec3 V = normalize(-vPosition.xyz);
         
-        vec4 finalColor = vec4(0.0, 0.0, 0.0, 0.0);
+        vec3 finalColor = vec3(0.0, 0.0, 0.0);
 
-        float r = length(light_pos - vPosition.xyz);
-        
-        
-        vec3 L = normalize(light_pos - vPosition.xyz);
-        
-        vec3 H = normalize(L + V);        
+        vec3 lights[2];
+        lights[0] = vec3(-0.5, -0.5, -0.5);
+        lights[1] = vec3(0.5, -0.5, -0.5);
 
-        float lambertian = max(0.0, dot(N, L));    
-        float specular = 0.0;
+        for (int i = 0; i < 2; i++) {
+            vec4 light_dir = modelView * vec4(lights[i], 0.0);
+            vec3 L = normalize(- light_dir.xyz);
+            vec3 H = normalize(L + V); 
+            float lambertian = max(0.0, dot(N, L));   
+            float specular = 0.0;
 
-        if(lambertian > 0.0) {
-            vec3 R = reflect(-L, N);      // Reflected light vector
+            if(lambertian > 0.0) {
+                vec3 R = reflect(-L, N);      // Reflected light vector
 
-            // Compute the specular term
-            float specAngle = max(dot(R, V), 0.0);
-            specular = pow(specAngle, shinniess);
+                // Compute the specular term
+                float specAngle = max(dot(R, V), 0.0);
+                specular = pow(specAngle, 0.8);
+            }
+            finalColor += (1.0 * vec3(0.2, 0.0, 0.0) +
+                      1.0 * lambertian * color +
+                      0.3 * specular * vec3(1.0, 1.0, 1.0)) * 1.0;
         }
-
-          gl_FragColor = vec4((1.0 * vec3(0.2, 0.0, 0.0) +
-                      20.0 * lambertian * color / (r*r) +
-                      10.0 * specular * vec3(1.0, 1.0, 1.0)/ (r*r)) * exposure, 1.0);
+        
+        gl_FragColor = vec4(finalColor, 1.0);
     }
 </script>
 
@@ -125,35 +127,37 @@
 
     void main() {
 
-        vec3 color = vec3(1.0, 1.0, 1.0);
-        vec3 light_pos = (modelView * vec4(light, 1.0)).xyz;
+        vec3 color = vec3(0.5, 0.5, 0.5);
 
         vec3 N = normalize(vNormal);
         vec3 V = normalize(-vPosition.xyz);
         
-        vec4 finalColor = vec4(0.0, 0.0, 0.0, 0.0);
+        vec3 finalColor = vec3(0.0, 0.0, 0.0);
 
-        float r = length(light_pos - vPosition.xyz);
-        
-        
-        vec3 L = normalize(light_pos - vPosition.xyz);
-        
-        vec3 H = normalize(L + V);        
+        vec3 lights[2];
+        lights[0] = vec3(-0.5, -0.5, -0.5);
+        lights[1] = vec3(0.5, -0.5, -0.5);
 
-        float lambertian = max(0.0, dot(N, L));    
-        float specular = 0.0;
+        for (int i = 0; i < 2; i++) {
+            vec4 light_dir = modelView * vec4(lights[i], 0.0);
+            vec3 L = normalize(- light_dir.xyz);
+            vec3 H = normalize(L + V); 
+            float lambertian = max(0.0, dot(N, L));   
+            float specular = 0.0;
 
-        if(lambertian > 0.0) {
-            vec3 R = reflect(-L, N);      // Reflected light vector
+            if(lambertian > 0.0) {
+                vec3 R = reflect(-L, N);      // Reflected light vector
 
-            // Compute the specular term
-            float specAngle = max(dot(R, V), 0.0);
-            specular = pow(specAngle, shinniess);
+                // Compute the specular term
+                float specAngle = max(dot(R, V), 0.0);
+                specular = pow(specAngle, 0.8);
+            }
+            finalColor += (1.0 * vec3(0.0, 0.0, 0.0) +
+                      1.0 * lambertian * color +
+                      0.2 * specular * vec3(1.0, 1.0, 1.0)) * 1.0;
         }
-
-          gl_FragColor = vec4((1.0 * vec3(0.1, 0.1, 0.1) +
-                      10.0 * lambertian * color / (r*r) +
-                      10.0 * specular * vec3(1.0, 1.0, 1.0)/ (r*r)) * exposure, 1.0);
+        
+        gl_FragColor = vec4(finalColor, 1.0);
     }
 </script>
 
