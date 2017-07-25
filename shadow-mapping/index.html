@@ -142,9 +142,8 @@
         vec3 shadowCoord = (vPositionFromLight.xyz/vPositionFromLight.w)/2.0 + 0.5;
         vec4 rgbaDepth = texture2D(shadowMap, shadowCoord.xy);
         float depth = unpackDepth(rgbaDepth);
-        float visibility = (shadowCoord.z > depth + 0.0015) ? 0.6 : 1.0;
-
-        vec3 color = vec3(0.5, 0.5, 0.5);
+        float visibility = (shadowCoord.z > depth + 0.00015) ? 0.6 : 1.0;
+        vec3 color = vec3(0.7, 0.7, 0.7);
 
         vec3 N = normalize(vNormal);
         vec3 V = normalize(-vPosition.xyz);
@@ -187,7 +186,6 @@
     uniform mat4 MVPLight;
 
     void main() {
-        vec3 a = vert_normal * 2.0;
         gl_Position = MVPLight * vec4(vert_position, 1.0);
     }
 </script>
@@ -299,6 +297,8 @@
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
 
+        texture.width = 1024;
+        texture.height = 1024;
         framebuffer.texture = texture;
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.bindTexture(gl.TEXTURE_2D, null);
@@ -448,7 +448,6 @@
         mat4.lookAt(modelViewLight, eye, center, up);
         var MVPLight = mat4.create();
         mat4.multiply(MVPLight, projLight, modelViewLight)
-        console.log(MVPLight);
 
         gl.depthFunc(gl.LESS);
         gl.enable(gl.DEPTH_TEST);
@@ -457,15 +456,15 @@
         var shinniess = 0.5;
 
         function updateWebGL() {
-            gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);    
             gl.viewport(0, 0, 1024, 1024);
             gl.clearColor(0, 0, 0, 1);            
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-            gl.useProgram(shadowProgram);
+            gl.useProgram(shadowProgram); 
 
             gl.uniformMatrix4fv(gl.getUniformLocation(shadowProgram, "MVPLight"), false, MVPLight);
+            drawShape(gl, shadowProgram, box, box.indexBuffer.numItems);                 
             drawShape(gl, shadowProgram, floor, floor.size);            
-            drawShape(gl, shadowProgram, box, box.indexBuffer.numItems);
             gl.bindFramebuffer(gl.FRAMEBUFFER, null);
             
 
@@ -515,7 +514,7 @@
 
         window.requestAnimationFrame(updateWebGL);
     }
-    var meshVar;
+
     window.onload = function () {
         OBJ.downloadMeshes({
             'box': 'box.obj', // located in the models folder on the server
